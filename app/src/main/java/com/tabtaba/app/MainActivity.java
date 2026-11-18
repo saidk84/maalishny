@@ -146,7 +146,20 @@ public final class MainActivity extends Activity {
             + "Drive is available. You can also save it on your phone and upload it in Drive.", 15);
         button("Save encrypted backup", () -> chooseBackup(true));
         button("Restore encrypted backup", () -> chooseBackup(false));
+        button("Privacy and data", this::showPrivacy);
         button("Back", this::showHome);
+    }
+
+    private void showPrivacy() {
+        page("Privacy and data", false);
+        label("Tabtaba keeps your profile, settings and prepared messages on this device. "
+            + "Tabtaba has no account server.", 16);
+        label("When you share a message, the app you choose receives its text. When you export a "
+            + "backup, the destination you choose receives a password-protected copy of your data. "
+            + "Those services handle the data according to their own policies.", 16);
+        label("To remove Tabtaba’s local data, clear its storage in Android Settings or uninstall "
+            + "the app. Delete exported backups separately from the location where you saved them.", 16);
+        button("Back to settings", this::settings);
     }
 
     private void chooseBackup(boolean export) {
