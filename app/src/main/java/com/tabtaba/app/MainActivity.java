@@ -1,6 +1,7 @@
 package com.tabtaba.app;
 
-import android.app.Activity;
+import androidx.activity.ComponentActivity;
+import androidx.activity.OnBackPressedCallback;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.Color;
@@ -21,7 +22,7 @@ import java.text.DateFormat;
 import java.util.Arrays;
 import java.util.Date;
 
-public final class MainActivity extends Activity {
+public final class MainActivity extends ComponentActivity {
     private static final int EXPORT = 1;
     private static final int IMPORT = 2;
     private static final int PLUM = Color.rgb(83, 23, 60);
@@ -29,10 +30,15 @@ public final class MainActivity extends Activity {
     private static final String BACKUP_TYPE = "application/octet-stream";
     private LinearLayout page;
     private LocalData store;
-    private boolean home;
+    private final OnBackPressedCallback navigateHome = new OnBackPressedCallback(false) {
+        @Override public void handleOnBackPressed() {
+            showHome();
+        }
+    };
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        getOnBackPressedDispatcher().addCallback(this, navigateHome);
         try {
             store = new LocalData(this);
             showHome();
@@ -44,7 +50,7 @@ public final class MainActivity extends Activity {
     }
 
     private void page(String title, boolean isHome) {
-        home = isHome;
+        navigateHome.setEnabled(!isHome);
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.setBackgroundColor(CREAM);
@@ -327,11 +333,6 @@ public final class MainActivity extends Activity {
         }
         if (first > 0) label("Showing the latest 100 entries. Backups include all entries.", 14);
         button("Back", this::showHome);
-    }
-
-    @Override public void onBackPressed() {
-        if (home) super.onBackPressed();
-        else showHome();
     }
 
     private void notice(String message) {
