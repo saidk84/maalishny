@@ -2,10 +2,11 @@ name: Android
 on:
   push:
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  assemble:
+  release-bundle:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,10 +16,23 @@ jobs:
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
-      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
-      - run: gradle --no-daemon :app:assembleDebug
+          gradle-version: '8.13'
+      - run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+      - run: gradle --no-daemon :app:lintRelease :app:bundleRelease
+      - name: Validate the optimized app bundle
+        run: |
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar \
+            -o "$RUNNER_TEMP/bundletool.jar"
+          java -jar "$RUNNER_TEMP/bundletool.jar" validate --bundle=app/build/outputs/bundle/release/app-release.aab
+          test -s app/build/outputs/mapping/release/mapping.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: tabtaba-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: tabtaba-release-aab-unsigned
+          path: app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tabtaba-r8-mapping
+          path: app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: error
