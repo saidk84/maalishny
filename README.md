@@ -4,7 +4,7 @@ A local-first Android prototype for sharing short messages of comfort. The app r
 
 ## Build and run
 
-Open this repository in Android Studio with JDK 17 and Android SDK 35. Select a phone or emulator and run the app module. From a terminal with Gradle 8.9 installed, run `gradle :app:assembleDebug`. The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
+Open this repository in Android Studio with JDK 17 and Android SDK 36. Select a phone or emulator and run the app module. From a terminal with Gradle 8.13 installed, run `gradle :app:assembleDebug`. The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
 
 ## Using the prototype
 
@@ -28,3 +28,23 @@ This version uses other apps for delivery. It has no shared phone registration, 
 - Switch Offline and confirm the share chooser no longer opens.
 - Export a backup, change the profile and add a message, then restore the saved backup. Check that the previous profile and history return.
 - Try a wrong password and a damaged file. Verify that the existing data remains intact.
+
+## Google Play release
+
+Run `gradle :app:lintRelease :app:bundleRelease` with JDK 17 and SDK 36. GitHub Actions runs both tasks and validates the bundle with bundletool. Download the unsigned AAB and save the separate R8 mapping file for this version. The release targets API 36, enables R8 and resource shrinking, and currently contains Java code with no native libraries.
+
+Sign the AAB with your Play upload key. For a first release, create a dedicated upload key and enroll in Play App Signing. For an existing Play listing, use its registered upload key and confirm that `versionCode` exceeds the previous release. Keep the keystore and passwords outside the repository. Sign and verify locally:
+
+```sh
+jarsigner -keystore /path/to/upload-key.jks -signedjar Tabtaba-release-signed.aab app-release.aab upload
+jarsigner -verify -verbose -certs Tabtaba-release-signed.aab
+```
+
+Before submitting:
+
+- Publish an app-specific public privacy policy with a publisher contact, describing local storage, user-initiated sharing, backup/export and deletion. Add its URL in Play Console. The app includes a Privacy and data screen.
+- Complete Data safety, the Health apps declaration, content rating, target audience, ads and app access declarations. Base answers on the actual app: local profile and history, Android sharing and manual backup, without a Tabtaba account service. Describe emotional support without making treatment claims.
+- Add the required listing graphics and screenshots. Describe manual sharing and manual backup accurately.
+- Upload the signed AAB to internal testing. Exercise sharing, offline mode, and backup/restore in the optimized release; review the pre-launch report and test Android 16. If the Play Console account is subject to the new personal-account testing requirement, run a closed test with at least 12 testers opted in continuously for at least 14 days before applying for production access.
+
+See [Play target API requirements](https://support.google.com/googleplay/android-developer/answer/11926878), [Play App Signing](https://developer.android.com/studio/publish/app-signing), and [production testing requirements](https://support.google.com/googleplay/android-developer/answer/14151465).
