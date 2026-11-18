@@ -1,0 +1,79 @@
+name: Publish Tabtaba 0.1.1
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-tabtaba-0.1.1.yml'
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+concurrency:
+  group: tabtaba-release-0.1.1
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Check for an existing release
+        id: release
+        run: |
+          if gh release view v0.1.1 >/dev/null 2>&1; then
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-java@v4
+        if: steps.release.outputs.exists != 'true'
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/download-artifact@v4
+        if: steps.release.outputs.exists != 'true'
+        with:
+          github-token: ${{ github.token }}
+          run-id: 44297113057
+          name: tabtaba-release-aab-unsigned
+          path: bundle
+      - uses: actions/download-artifact@v4
+        if: steps.release.outputs.exists != 'true'
+        with:
+          github-token: ${{ github.token }}
+          run-id: 44297113057
+          name: tabtaba-r8-mapping
+          path: mapping
+      - name: Generate the installable APK from the optimized bundle
+        if: steps.release.outputs.exists != 'true'
+        run: |
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar \
+            -o "$RUNNER_TEMP/bundletool.jar"
+          java -jar "$RUNNER_TEMP/bundletool.jar" validate --bundle=bundle/app-release.aab
+          keytool -genkeypair -keystore "$RUNNER_TEMP/test.p12" -storetype PKCS12 \
+            -storepass android -keypass android -alias tabtaba-test \
+            -keyalg RSA -keysize 2048 -validity 3650 -dname 'CN=Tabtaba Test'
+          java -jar "$RUNNER_TEMP/bundletool.jar" build-apks \
+            --bundle=bundle/app-release.aab --output="$RUNNER_TEMP/tabtaba.apks" --mode=universal \
+            --ks="$RUNNER_TEMP/test.p12" --ks-pass=pass:android \
+            --ks-key-alias=tabtaba-test --key-pass=pass:android
+          unzip -p "$RUNNER_TEMP/tabtaba.apks" universal.apk > Tabtaba-0.1.1-test.apk
+          test -s Tabtaba-0.1.1-test.apk
+          test -s mapping/mapping.txt
+          cp bundle/app-release.aab Tabtaba-0.1.1-unsigned.aab
+          cp mapping/mapping.txt Tabtaba-0.1.1-r8-mapping.txt
+      - name: Publish release assets
+        if: steps.release.outputs.exists != 'true'
+        run: |
+          cat > release-notes.md <<'EOF'
+          Android release bundle targeting API 36, with R8 code optimization and resource shrinking.
+
+          - The AAB requires your Google Play upload signature.
+          - The universal APK is signed with a test key for sideloading. Android may require uninstalling a copy signed with a different key. Back up local data before uninstalling.
+          - Keep the matching R8 mapping for decoding release crash reports.
+
+          [Validated Android build](https://github.com/saidk84/maalishny/actions/runs/44297113057)
+          EOF
+          gh release create v0.1.1 --target a97cafa5df00149de375b7469cfd0ddbdd5df297 \
+            --title 'طبطبة | Tabtaba 0.1.1' --notes-file release-notes.md \
+            Tabtaba-0.1.1-unsigned.aab Tabtaba-0.1.1-test.apk Tabtaba-0.1.1-r8-mapping.txt
