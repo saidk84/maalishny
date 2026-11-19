@@ -231,6 +231,7 @@ public final class PeopleActivity extends ComponentActivity {
     }
 
     private void readContacts() {
+        if (checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return;
         text("Reading your contacts…");
         new Thread(() -> {
             Map<String, String> found = new LinkedHashMap<>();
