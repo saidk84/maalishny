@@ -2,7 +2,7 @@
 
 Tabtaba is an Android app for exchanging short messages of comfort with people you know.
 
-Current version: **0.2.0** — Android versionCode **3**. Each future release must increase both values in `app/build.gradle`. Tagged releases are preserved.
+Current version: **0.2.1** — Android versionCode **4**. Each future release must increase both values in `app/build.gradle`. Tagged releases are preserved.
 
 ## Download
 
