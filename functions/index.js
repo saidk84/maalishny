@@ -14,9 +14,12 @@ const directoryKey = defineSecret("DIRECTORY_HMAC_KEY");
 const options = { region: "us-central1", maxInstances: 2, enforceAppCheck: true,
   secrets: [directoryKey] };
 const DAYS = 7 * 86400_000;
-function identity(request) {
+async function identity(request) {
   if (!request.auth || !validPhone(request.auth.token.phone_number))
     throw new HttpsError("unauthenticated", "Verify your mobile number first.");
+  const user = await getAuth().getUser(request.auth.uid).catch(() => null);
+  if (!user || user.disabled || user.phoneNumber !== request.auth.token.phone_number)
+    throw new HttpsError("unauthenticated", "Sign in again.");
   return { uid: request.auth.uid, phone: request.auth.token.phone_number };
 }
 function phoneKey(phone) {
@@ -33,7 +36,7 @@ async function rate(uid, action, maximum) {
   });
 }
 exports.registerDevice = onCall(options, async request => {
-  const { uid, phone } = identity(request);
+  const { uid, phone } = await identity(request);
   await rate(uid, "register", 60);
   const { token, online, visible } = request.data || {};
   if (typeof token !== "string" || token.length > 4096 ||
@@ -52,7 +55,7 @@ exports.registerDevice = onCall(options, async request => {
   return { ok: true };
 });
 exports.findContacts = onCall(options, async request => {
-  const { uid } = identity(request);
+  const { uid } = await identity(request);
   await rate(uid, "lookup", 12);
   const phones = request.data?.phones;
   if (!Array.isArray(phones) || phones.length < 1 || phones.length > 100 ||
@@ -73,7 +76,7 @@ exports.findContacts = onCall(options, async request => {
   return { matches };
 });
 exports.sendComfort = onCall(options, async request => {
-  const { uid, phone } = identity(request);
+  const { uid, phone } = await identity(request);
   const { recipients, text, kind, id } = request.data || {};
   if (!Array.isArray(recipients) || recipients.length < 1 || recipients.length > 10 ||
       !recipients.every(x => typeof x === "string" && /^[a-zA-Z0-9_-]{1,128}$/.test(x)) ||
@@ -112,7 +115,7 @@ exports.sendComfort = onCall(options, async request => {
   return { ok: true };
 });
 exports.fetchInbox = onCall(options, async request => {
-  const { uid } = identity(request);
+  const { uid } = await identity(request);
   await rate(uid, "inbox", 240);
   const profile = await db.doc("profiles/" + uid).get();
   if (!profile.exists || !profile.data().online) return { messages: [] };
@@ -124,7 +127,7 @@ exports.fetchInbox = onCall(options, async request => {
     }) };
 });
 exports.acknowledge = onCall(options, async request => {
-  const { uid } = identity(request);
+  const { uid } = await identity(request);
   await rate(uid, "ack", 240);
   const ids = request.data?.ids;
   if (!Array.isArray(ids) || ids.length > 100 || !ids.every(id =>
@@ -141,7 +144,7 @@ exports.acknowledge = onCall(options, async request => {
   return { ok: true };
 });
 exports.deleteAccount = onCall(options, async request => {
-  const { uid, phone } = identity(request);
+  const { uid, phone } = await identity(request);
   if (Date.now() / 1000 - request.auth.token.auth_time > 300)
     throw new HttpsError("failed-precondition", "Sign in again before deleting your account.");
   await rate(uid, "delete", 5);
