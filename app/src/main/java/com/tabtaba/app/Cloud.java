@@ -56,15 +56,19 @@ final class Cloud {
 
     // All local mutations run on Android's main thread, including worker callbacks.
     static void sync(Context context, Runnable done) {
+        syncResult(context, success -> done.run());
+    }
+
+    static void syncResult(Context context, java.util.function.Consumer<Boolean> done) {
         try {
-            if (!configured(context) || uid().isEmpty()) { done.run(); return; }
+            if (!configured(context) || uid().isEmpty()) { done.accept(true); return; }
             LocalData local = LocalData.get(context);
             if (!uid().equals(local.data.optString("ownerUid")) ||
-                    !local.data.optBoolean("online", true)) { done.run(); return; }
+                    !local.data.optBoolean("online", true)) { done.accept(true); return; }
             final String account = uid();
             call("fetchInbox", Collections.emptyMap()).addOnCompleteListener(task -> {
-                if (!account.equals(uid())) { done.run(); return; }
-                if (!task.isSuccessful()) { done.run(); return; }
+                if (!account.equals(uid())) { done.accept(false); return; }
+                if (!task.isSuccessful()) { done.accept(false); return; }
                 try {
                     List<?> messages = (List<?>) task.getResult().get("messages");
                     JSONObject next = local.copy();
@@ -90,39 +94,44 @@ final class Cloud {
                     Task<?> acknowledgement = ids.isEmpty() ? Tasks.forResult(null) :
                         call("acknowledge", args("ids", ids));
                     acknowledgement.addOnCompleteListener(ignored -> {
-                        if (!account.equals(uid())) { done.run(); return; }
-                        if (acknowledgement.isSuccessful() && messages.size() == 100) sync(context, done);
+                        if (!account.equals(uid())) { done.accept(false); return; }
+                        if (!acknowledgement.isSuccessful()) { done.accept(false); return; }
+                        if (messages.size() == 100) syncResult(context, done);
                         else flush(local, account, done);
                     });
-                } catch (Exception failure) { done.run(); }
+                } catch (Exception failure) { done.accept(false); }
             });
-        } catch (Exception failure) { done.run(); }
+        } catch (Exception failure) { done.accept(false); }
     }
 
-    private static void flush(LocalData local, String account, Runnable done) {
+    private static void flush(LocalData local, String account, java.util.function.Consumer<Boolean> done) {
         try {
             JSONArray history = local.data.getJSONArray("history");
             for (int i = 0; i < history.length(); i++) {
                 JSONObject entry = history.getJSONObject(i);
                 if (!entry.optString("status").equals("pending")) continue;
-                int index = i;
+                String entryId = entry.getString("id");
                 JSONArray targets = entry.getJSONArray("recipients");
                 List<String> recipients = new ArrayList<>();
                 for (int t = 0; t < targets.length(); t++) recipients.add(targets.getString(t));
                 call("sendComfort", args("id", entry.getString("id"), "text", entry.getString("text"),
                     "kind", entry.getString("kind"), "recipients", recipients))
                     .addOnCompleteListener(task -> {
-                        if (!account.equals(uid()) || !task.isSuccessful()) { done.run(); return; }
+                        if (!account.equals(uid()) || !task.isSuccessful()) { done.accept(false); return; }
                         try {
                             JSONObject next = local.copy();
-                            next.getJSONArray("history").getJSONObject(index).put("status", "queued");
+                            JSONArray current = next.getJSONArray("history");
+                            for (int row = 0; row < current.length(); row++) {
+                                JSONObject item = current.getJSONObject(row);
+                                if (entryId.equals(item.optString("id"))) item.put("status", "queued");
+                            }
                             local.save(next);
                             flush(local, account, done);
-                        } catch (Exception failure) { done.run(); }
+                        } catch (Exception failure) { done.accept(false); }
                     });
                 return;
             }
-        } catch (Exception failure) { /* Keep pending messages available for retry. */ }
-        done.run();
+        } catch (Exception failure) { done.accept(false); return; }
+        done.accept(true);
     }
 }
