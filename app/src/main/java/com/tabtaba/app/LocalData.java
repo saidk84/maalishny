@@ -8,6 +8,12 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 
 final class LocalData {
+    private static LocalData instance;
+    static synchronized LocalData get(Context context) throws Exception {
+        if (instance == null) instance = new LocalData(context.getApplicationContext());
+        return instance;
+    }
+
     static final int LIMIT = 16 * 1024 * 1024;
     private final AtomicFile file;
     JSONObject data;
