@@ -363,7 +363,8 @@ public final class MainActivity extends ComponentActivity {
         for (int i = entries.length() - 1; i >= first; i--) {
             JSONObject entry = entries.optJSONObject(i);
             label(entry.optString("text"), 23).setTypeface(null, Typeface.BOLD);
-            label(entry.optString("kind") + " · " + entry.optString("person") + "\n" +
+            label(entry.optString("direction", "prepared") + " · " + entry.optString("status") + "\n" +
+                entry.optString("kind") + " · " + entry.optString("person") + "\n" +
                 DateFormat.getDateTimeInstance().format(new Date(entry.optLong("time"))), 14);
         }
         if (first > 0) label("Showing the latest 100 entries. Backups include all entries.", 14);
