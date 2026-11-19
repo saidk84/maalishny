@@ -40,7 +40,7 @@ public final class MainActivity extends ComponentActivity {
         super.onCreate(state);
         getOnBackPressedDispatcher().addCallback(this, navigateHome);
         try {
-            store = new LocalData(this);
+            store = LocalData.get(this);
             showHome();
         } catch (Exception failure) {
             page("طبطبة | Tabtaba", true);
@@ -118,10 +118,14 @@ public final class MainActivity extends ComponentActivity {
         String name = store.data.optString("name");
         if (!name.isEmpty()) label(name, 20);
         label(online ? "Online on this device" : "Offline on this device", 15);
-        button("Send comfort", () -> compose(false));
-        button("Ask for comfort · معلشني", () -> compose(true));
+        button("Send comfort / Ask for comfort", () ->
+            startActivity(new Intent(this, PeopleActivity.class)));
+        button("Share through another app", () -> compose(false));
         button("Message history", this::history);
         button("Settings", this::settings);
+        if (Cloud.configured(this) && !Cloud.uid().isEmpty()) {
+            Cloud.register(store).addOnSuccessListener(ignored -> DeliveryWorker.schedule(this));
+        }
     }
 
     private void settings() {
@@ -130,17 +134,23 @@ public final class MainActivity extends ComponentActivity {
             InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
         EditText phone = input("Mobile number", store.data.optString("phone"),
             InputType.TYPE_CLASS_PHONE);
+        if (Cloud.configured(this) && !Cloud.uid().isEmpty()) phone.setEnabled(false);
+        Switch visible = new Switch(this);
+        visible.setText("Show my online / offline preference to people who have my number");
+        visible.setChecked(store.data.optBoolean("visible", false));
+        page.addView(visible);
         Switch online = new Switch(this);
         online.setText("Online");
         online.setChecked(store.data.optBoolean("online", true));
         page.addView(online);
-        label("Offline disables sharing on this phone. Your history stays available.", 15);
+        label("Offline pauses direct sending and receiving. Online status reflects your preference, not a live connection.", 15);
         button("Save settings", () -> {
             try {
                 JSONObject next = store.copy();
                 next.put("name", name.getText().toString().trim());
                 next.put("phone", phone.getText().toString().trim());
                 next.put("online", online.isChecked());
+                next.put("visible", visible.isChecked());
                 store.save(next);
                 showHome();
             } catch (Exception failure) {
@@ -153,16 +163,36 @@ public final class MainActivity extends ComponentActivity {
         button("Save encrypted backup", () -> chooseBackup(true));
         button("Restore encrypted backup", () -> chooseBackup(false));
         button("Privacy and data", this::showPrivacy);
+        button("Phone verification / Online account", () -> startActivity(new Intent(this, PeopleActivity.class)));
+        button("Clear local data", () -> new AlertDialog.Builder(this)
+            .setTitle("Clear this phone’s Tabtaba data?")
+            .setMessage("This removes your profile, settings and message history from this phone. Export a backup first if you want to keep them.")
+            .setNegativeButton("Cancel", null).setPositiveButton("Clear", (dialog, which) -> {
+                try {
+                    JSONObject empty = new JSONObject();
+                    empty.put("version", 1);
+                    empty.put("online", true);
+                    empty.put("history", new JSONArray());
+                    if (Cloud.configured(this) && !Cloud.uid().isEmpty())
+                        com.google.firebase.auth.FirebaseAuth.getInstance().signOut();
+                    store.save(empty);
+                    showHome();
+                } catch (Exception failure) { notice("Couldn’t clear local data."); }
+            }).show());
         button("Back", this::showHome);
     }
 
     private void showPrivacy() {
         page("Privacy and data", false);
         label("Tabtaba keeps your profile, settings and prepared messages on this device. "
-            + "Tabtaba has no account server.", 16);
+            + "When enabled, Firebase stores a verified phone account, device notification token and availability settings.", 16);
         label("When you share a message, the app you choose receives its text. When you export a "
             + "backup, the destination you choose receives a password-protected copy of your data. "
             + "Those services handle the data according to their own policies.", 16);
+        label("Contact discovery sends phone numbers to the backend for matching. Names stay on your phone. "
+            + "Messages wait on the server until received, or expire after seven days with hourly cleanup. "
+            + "Delivery uses encrypted network connections. Messages are readable by the backend while queued. "
+            + "Notifications show a discreet alert. Delete an online account from the account screen.", 16);
         label("To remove Tabtaba’s local data, clear its storage in Android Settings or uninstall "
             + "the app. Delete exported backups separately from the location where you saved them.", 16);
         button("Back to settings", this::settings);
@@ -251,7 +281,12 @@ public final class MainActivity extends ComponentActivity {
             return;
         }
         try {
-            if (restored != null) store.save(restored);
+            if (restored != null) {
+                if (Cloud.configured(this) && !Cloud.uid().isEmpty() &&
+                        !Cloud.uid().equals(restored.optString("ownerUid")))
+                    throw new IllegalStateException("Sign out before restoring a different account’s backup.");
+                store.save(restored);
+            }
             settings();
             notice(restored == null ? "Encrypted backup saved." : "Backup restored.");
         } catch (Exception failure) {
