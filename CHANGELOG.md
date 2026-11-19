@@ -1,5 +1,10 @@
 # Release history
 
+## 0.2.1 — versionCode 4
+
+- Preserve outgoing message identity if local data is restored during sending.
+- Retry failed background delivery with exponential backoff.
+
 ## 0.2.0 — versionCode 3
 
 - Add Firebase phone verification, contact discovery, temporary direct delivery, push handling, account deletion and availability preferences.
