@@ -28,9 +28,13 @@ public final class DeliveryWorker extends Worker {
 
     @NonNull @Override public Result doWork() {
         CountDownLatch finished = new CountDownLatch(1);
-        new Handler(Looper.getMainLooper()).post(() -> Cloud.sync(getApplicationContext(), finished::countDown));
+        java.util.concurrent.atomic.AtomicBoolean successful = new java.util.concurrent.atomic.AtomicBoolean(false);
+        new Handler(Looper.getMainLooper()).post(() -> Cloud.syncResult(getApplicationContext(), result -> {
+            successful.set(result);
+            finished.countDown();
+        }));
         try {
-            return finished.await(90, TimeUnit.SECONDS) ? Result.success() : Result.retry();
+            return finished.await(90, TimeUnit.SECONDS) && successful.get() ? Result.success() : Result.retry();
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             return Result.retry();
