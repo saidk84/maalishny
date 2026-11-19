@@ -90,11 +90,13 @@ jobs:
               -keyalg RSA -keysize 2048 -validity 3650 -dname 'CN=Tabtaba Test'
           fi
           export TEST_PASSWORD
+          printf '%s' "$TEST_PASSWORD" > "$RUNNER_TEMP/test-password"
+          chmod 600 "$RUNNER_TEMP/test-password"
           java -jar "$RUNNER_TEMP/bundletool.jar" build-apks \
             --bundle=app/build/outputs/bundle/release/app-release.aab \
             --output="$RUNNER_TEMP/tabtaba.apks" --mode=universal \
-            --ks="$RUNNER_TEMP/test.p12" --ks-pass=env:TEST_PASSWORD \
-            --ks-key-alias="$TEST_ALIAS" --key-pass=env:TEST_PASSWORD
+            --ks="$RUNNER_TEMP/test.p12" --ks-pass=file:"$RUNNER_TEMP/test-password" \
+            --ks-key-alias="$TEST_ALIAS" --key-pass=file:"$RUNNER_TEMP/test-password"
           unzip -p "$RUNNER_TEMP/tabtaba.apks" universal.apk > "release-assets/Tabtaba-$VERSION-test.apk"
           cp app/build/outputs/bundle/release/app-release.aab "release-assets/Tabtaba-$VERSION-unsigned.aab"
           cp app/build/outputs/mapping/release/mapping.txt "release-assets/Tabtaba-$VERSION-r8-mapping.txt"
