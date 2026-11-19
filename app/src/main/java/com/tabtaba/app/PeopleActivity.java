@@ -347,6 +347,7 @@ public final class PeopleActivity extends ComponentActivity {
                 next.getJSONArray("history").put(entry);
                 local.save(next);
                 send.setEnabled(false);
+                DeliveryWorker.schedule(this);
                 Cloud.sync(this, () -> {
                     Toast.makeText(this, "Saved. Pending messages retry when you refresh online.", Toast.LENGTH_LONG).show();
                     connected();
