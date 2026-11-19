@@ -1,0 +1,135 @@
+name: Publish Tabtaba
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-tabtaba.yml'
+      - 'app/build.gradle'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: tabtaba-publish
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read release version
+        id: version
+        run: |
+          name=$(grep versionName app/build.gradle | cut -d "'" -f 2)
+          code=$(awk '/versionCode/ {print $2}' app/build.gradle)
+          test -n "$name"
+          test "$code" -ge 3
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+      - name: Check for existing release
+        id: existing
+        env:
+          VERSION: ${{ steps.version.outputs.name }}
+        run: |
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check backend validation
+        run: |
+          node --check functions/index.js
+          node --test functions/validation.test.js
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platforms;android-36 build-tools;35.0.0
+      - name: Configure Firebase when provided
+        id: firebase
+        env:
+          FIREBASE_CONFIG: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$FIREBASE_CONFIG" ]; then
+            printf '%s' "$FIREBASE_CONFIG" > app/google-services.json
+            echo 'configured=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'configured=false' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build optimized AAB and run release lint
+        run: gradle --no-daemon :app:lintRelease :app:bundleRelease
+      - name: Validate bundle and build test APK
+        env:
+          VERSION: ${{ steps.version.outputs.name }}
+          TEST_KEYSTORE: ${{ secrets.TEST_KEYSTORE_BASE64 }}
+          TEST_PASSWORD: ${{ secrets.TEST_KEYSTORE_PASSWORD }}
+          TEST_ALIAS: ${{ secrets.TEST_KEY_ALIAS }}
+        run: |
+          mkdir -p release-assets
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar \
+            -o "$RUNNER_TEMP/bundletool.jar"
+          java -jar "$RUNNER_TEMP/bundletool.jar" validate --bundle=app/build/outputs/bundle/release/app-release.aab
+          if [ -n "$TEST_KEYSTORE" ]; then
+            test -n "$TEST_PASSWORD"
+            test -n "$TEST_ALIAS"
+            printf '%s' "$TEST_KEYSTORE" | base64 --decode > "$RUNNER_TEMP/test.p12"
+          else
+            TEST_PASSWORD=android
+            TEST_ALIAS=tabtaba-test
+            keytool -genkeypair -keystore "$RUNNER_TEMP/test.p12" -storetype PKCS12 \
+              -storepass "$TEST_PASSWORD" -keypass "$TEST_PASSWORD" -alias "$TEST_ALIAS" \
+              -keyalg RSA -keysize 2048 -validity 3650 -dname 'CN=Tabtaba Test'
+          fi
+          export TEST_PASSWORD
+          java -jar "$RUNNER_TEMP/bundletool.jar" build-apks \
+            --bundle=app/build/outputs/bundle/release/app-release.aab \
+            --output="$RUNNER_TEMP/tabtaba.apks" --mode=universal \
+            --ks="$RUNNER_TEMP/test.p12" --ks-pass=env:TEST_PASSWORD \
+            --ks-key-alias="$TEST_ALIAS" --key-pass=env:TEST_PASSWORD
+          unzip -p "$RUNNER_TEMP/tabtaba.apks" universal.apk > "release-assets/Tabtaba-$VERSION-test.apk"
+          cp app/build/outputs/bundle/release/app-release.aab "release-assets/Tabtaba-$VERSION-unsigned.aab"
+          cp app/build/outputs/mapping/release/mapping.txt "release-assets/Tabtaba-$VERSION-r8-mapping.txt"
+          test -s "release-assets/Tabtaba-$VERSION-test.apk"
+          test -s "release-assets/Tabtaba-$VERSION-r8-mapping.txt"
+          keytool -list -v -keystore "$RUNNER_TEMP/test.p12" -storepass:env TEST_PASSWORD \
+            -alias "$TEST_ALIAS" > "release-assets/Tabtaba-$VERSION-test-certificate.txt"
+          cp FIREBASE_SETUP.md release-assets/
+          cd release-assets
+          sha256sum *.apk *.aab *.txt *.md > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tabtaba-${{ steps.version.outputs.name }}
+          path: release-assets/
+          if-no-files-found: error
+      - name: Publish versioned release
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.name }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+          FIREBASE_CONFIGURED: ${{ steps.firebase.outputs.configured }}
+        run: |
+          cat > release-notes.md <<EOF
+          Android versionCode $VERSION_CODE. R8 code optimization and resource shrinking enabled. Release lint, backend message validation tests and bundletool validation passed.
+
+          Firebase configuration included: **$FIREBASE_CONFIGURED**.
+          If false, the downloaded app supports local features and displays online setup instructions. Real SMS verification and direct messaging need the owner's Firebase project, backend deployment, App Check and signing-certificate setup.
+
+          - APK is signed with a test key for sideloading. Export local history before uninstalling a copy signed with a different key.
+          - AAB requires your Google Play upload signature.
+          - The mapping file belongs to this optimized build.
+          - Firebase setup guide and APK test-certificate fingerprints are attached.
+          - Project setup and live two-phone testing remain required before public rollout.
+
+          [Build results](https://github.com/$GH_REPO/actions/runs/$GITHUB_RUN_ID)
+          EOF
+          gh release create "v$VERSION" --target "$GITHUB_SHA" \
+            --title "طبطبة | Tabtaba $VERSION" --notes-file release-notes.md release-assets/*
