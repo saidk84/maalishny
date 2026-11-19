@@ -1,13 +1,20 @@
-plugins { id 'com.android.application' version '8.13.2' }
+plugins {
+    id 'com.android.application' version '8.13.2'
+    id 'com.google.gms.google-services' version '4.4.4' apply false
+}
+if (file('google-services.json').exists()) {
+    apply plugin: 'com.google.gms.google-services'
+}
 android {
+    buildFeatures { buildConfig true }
     namespace 'com.tabtaba.app'
     compileSdk 36
     defaultConfig {
         applicationId 'com.tabtaba.app'
         minSdk 26
         targetSdk 36
-        versionCode 2
-        versionName '0.1.1'
+        versionCode 3
+        versionName '0.2.0'
     }
     buildTypes {
         release {
@@ -23,5 +30,13 @@ android {
 }
 
 dependencies {
+    implementation platform('com.google.firebase:firebase-bom:34.6.0')
+    implementation 'com.google.firebase:firebase-auth'
+    implementation 'com.google.firebase:firebase-functions'
+    implementation 'com.google.firebase:firebase-messaging'
+    implementation 'com.google.firebase:firebase-appcheck-playintegrity'
+    implementation 'com.google.firebase:firebase-appcheck-debug'
+    implementation 'androidx.work:work-runtime:2.10.1'
+    implementation 'com.googlecode.libphonenumber:libphonenumber:8.13.55'
     implementation 'androidx.activity:activity:1.10.1'
 }
