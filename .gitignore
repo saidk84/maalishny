@@ -3,3 +3,9 @@
 **/build/
 local.properties
 *.jks
+
+app/google-services.json
+functions/node_modules/
+.firebase/
+.firebaserc
+*-debug.log
