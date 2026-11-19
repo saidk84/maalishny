@@ -105,7 +105,10 @@ public final class PeopleActivity extends ComponentActivity {
         Spinner country = new Spinner(this);
         List<String> regions = new ArrayList<>(PhoneNumberUtil.getInstance().getSupportedRegions());
         Collections.sort(regions);
-        country.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, regions));
+        List<String> labels = new ArrayList<>();
+        for (String region : regions) labels.add(new Locale("", region).getDisplayCountry()
+            + " (+" + PhoneNumberUtil.getInstance().getCountryCodeForRegion(region) + ")");
+        country.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, labels));
         country.setSelection(regions.indexOf("AE"));
         page.addView(country);
         EditText number = field("Mobile number", InputType.TYPE_CLASS_PHONE);
@@ -117,7 +120,7 @@ public final class PeopleActivity extends ComponentActivity {
             try {
                 PhoneNumberUtil util = PhoneNumberUtil.getInstance();
                 com.google.i18n.phonenumbers.Phonenumber.PhoneNumber parsed =
-                    util.parse(number.getText().toString(), (String) country.getSelectedItem());
+                    util.parse(number.getText().toString(), regions.get(country.getSelectedItemPosition()));
                 if (!util.isValidNumber(parsed)) { number.setError("Check the number and country."); return; }
                 String phone = util.format(parsed, PhoneNumberUtil.PhoneNumberFormat.E164);
                 resendAfter = System.currentTimeMillis() + 60_000;
@@ -330,7 +333,7 @@ public final class PeopleActivity extends ComponentActivity {
             String message = (String) choice.getSelectedItem();
             if (custom.getVisibility() == android.view.View.VISIBLE) {
                 message = custom.getText().toString().trim();
-                if (message.isEmpty() || message.split("\\s+").length > 3 || message.length() > 160) {
+                if (message.isEmpty() || message.split("(?U)\\s+").length > 3 || message.length() > 160) {
                     custom.setError("Use one to three words, up to 160 characters."); return;
                 }
             }
